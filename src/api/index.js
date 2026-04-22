@@ -63,7 +63,7 @@ export const getUserWorkspace = async () => {
         throw error;
     }
 };
-getUserInfo()
+getUserWorkspace()
 
 // // 获取用户项目信息
 // export const getUserWorkspace = async () => {

@@ -1,4 +1,4 @@
-import TapdTest from './TapdTest';
+import TapdTest from './TapdTest.js';
 import './TapdTest.css';
 import { getUserInfo } from "./api/index.js";
 function App() {
