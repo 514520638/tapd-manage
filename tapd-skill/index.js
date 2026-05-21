@@ -91,7 +91,7 @@ export const createTapdApi = (USER_TOKEN) => {
                     id: item.id,
                     name: item.name,
                     story_num: storyNum.count,
-                    average_score: item.business_value / storyNum.count,
+                    average_score: item.business_value / (storyNum.count + 1),
                     status: item.status,
                     priority: item.priority,
                     description: item.description,
