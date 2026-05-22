@@ -1,20 +1,26 @@
 /**
  * Tapd Skill - 封装 Tapd 开放平台 API 业务逻辑
  * 
- * 使用说明：
- * 1. 在 OpenClaw 中配置 skill 时，需要传入以下参数：
- *    - USER_TOKEN: 你的 Tapd OAuth Access Token
+ * 基于 src/api/index.js 逻辑重构，支持 openclaw 定时任务执行
  * 
+ * 使用说明：
+ * 1. 在 OpenClaw 中配置 skill 时，需要用户提供 USER_TOKEN（必填）
  * 2. 调用示例：
  *    import { createTapdApi } from './tapd-skill';
  *    const tapd = createTapdApi('your-user-token');
  *    const userinfo = await tapd.getUserInfo();
+ * 3. 直接运行（Node.js 环境）：
+ *    TAPD_USER_TOKEN=xxx node tapd-skill/index.js
  */
 
 import axios from 'axios';
 
 // 配置常量
+const TAPD_SIZE = 11;
 const EMUN_WORKITEM_ENGLISH_NAME = ['story', 'Task', 'LOG']
+const LOG_WORKITEM_TYPE_ID = '1149782315001000496';
+const WORKSPACE_ID = '49782315';
+
 const DEWSCRIPTION = "<div class=\"tox-clear-float\"><table border=\"1\" style=\"border-collapse: collapse; border-width: 1px; border-color: #ced4d9; width: 658px; height: 84px;\"><tbody><tr style=\"height: 28px;\"><td style=\"width: 145px; border-width: 1px; padding: 4px; border-color: #ced4d9; height: 28px;\"><strong><span style=\"font-family: 'PingFang SC'; color: #171a1d;\">今日工作内容及产出</span><span style=\"font-family: 'PingFang SC'; color: #171a1d;\">：</span></strong></td><td style=\"width: 282px; border-width: 1px; padding: 4px; border-color: #ced4d9; height: 28px;\"><br></td></tr><tr style=\"height: 28px;\"><td style=\"width: 145px; border-width: 1px; padding: 4px; border-color: #ced4d9; height: 28px;\"><span style=\"font-family: 'PingFang SC'; font-size: 14px; font-weight: 456; color: #171a1d;\">遇到的问题</span><span style=\"font-family: 'PingFang SC'; font-size: 14px; font-weight: 200; color: #171a1d;\">：</span></td><td style=\"width: 282px; border-width: 1px; padding: 4px; border-color: #ced4d9; height: 28px;\"><br></td></tr><tr style=\"height: 28px;\"><td style=\"width: 145px; border-width: 1px; padding: 4px; border-color: #ced4d9; height: 28px;\"><span style=\"font-family: 'PingFang SC'; font-size: 14px; font-weight: 456; color: #171a1d;\">明日工作计划</span><span style=\"font-family: 'PingFang SC'; font-size: 14px; font-weight: 200; color: #171a1d;\">：</span></td><td style=\"width: 282px; border-width: 1px; padding: 4px; border-color: #ced4d9; height: 28px;\"><br></td></tr></tbody></table></div><p>&nbsp;</p><p><br></p>"
 
 /**
@@ -74,37 +80,35 @@ export const createTapdApi = (USER_TOKEN) => {
 
     // 获取用户空间信息（工作空间ID）
     const getUserWorkspace = () => {
-        return '49782315'; // 根据实际情况返回
+        return WORKSPACE_ID;
     };
 
-    // 获取用户Story列表
+    // 获取用户Story列表 - 与原逻辑一致
     const getUserStoryList = async (workspace_id, workTypeId) => {
         const result = await api.get('/user_oauth/get_user_todo_story', {
             params: { workspace_id }
         });
-        const storyListPromise = result
-            .filter(item => item.Story.workitem_type_id === workTypeId)
-            .map(async items => {
-                let item = items.Story
-                const storyNum = await getStoryNumber(workspace_id, item.id)
-                return {
-                    id: item.id,
-                    name: item.name,
-                    story_num: storyNum.count,
-                    average_score: item.business_value / (storyNum.count + 1),
-                    status: item.status,
-                    priority: item.priority,
-                    description: item.description,
-                    created: item.created,
-                    business_value: item.business_value,
-                    iteration_id: item.iteration_id,
-                    level: item.level,
-                    parent_id: item.parent_id,
-                    workitem_type_id: item.workitem_type_id,
-                    creator: item.creator,
-                    children_id: item.children_id,
-                }
-            })
+        const storyListPromise = result.filter(item => item.Story.workitem_type_id === workTypeId).map(async items => {
+            let item = items.Story
+            const storyNum = await getStoryNumber(workspace_id, item.id)
+            return {
+                id: item.id,
+                name: item.name,
+                story_num: storyNum.count,
+                average_score: item.business_value / (storyNum.count || 0.1),  // 与原逻辑一致
+                status: item.status,
+                priority: item.priority,
+                description: item.description,
+                created: item.created,
+                business_value: item.business_value,
+                iteration_id: item.iteration_id,
+                level: item.level,
+                parent_id: item.parent_id,
+                workitem_type_id: item.workitem_type_id,
+                creator: item.creator,
+                children_id: item.children_id,
+            }
+        })
         return await Promise.all(storyListPromise)
     };
 
@@ -122,11 +126,11 @@ export const createTapdApi = (USER_TOKEN) => {
             name: targetStory.name,
             creator: targetStory.creator,
             priority_label: targetStory.priority,
-            size: 11,
+            size: TAPD_SIZE,
             owner: targetStory.creator,
             business_value: targetStory.business_value,
             parent_id: targetStory.id,
-            workitem_type_id: '1149782315001000496',
+            workitem_type_id: LOG_WORKITEM_TYPE_ID,
             iteration_id: targetStory.iteration_id,
             description: DEWSCRIPTION,
         });
@@ -139,11 +143,11 @@ export const createTapdApi = (USER_TOKEN) => {
             name: targetStory.name,
             creator: targetStory.creator,
             priority_label: targetStory.priority,
-            size: 11,
+            size: TAPD_SIZE,
             owner: targetStory.creator,
             business_value: targetStory.business_value,
             id: targetStory.id,
-            workitem_type_id: '1149782315001000496',
+            workitem_type_id: LOG_WORKITEM_TYPE_ID,
             iteration_id: targetStory.iteration_id,
             description: DEWSCRIPTION,
             status: 'status_8'
@@ -162,8 +166,33 @@ export const createTapdApi = (USER_TOKEN) => {
         const bestTask = userTaskList.reduce((prev, curr) => {
             return prev.average_score > curr.average_score ? prev : curr
         })
-        // const testTask = userTaskList.find(item => item.id === '1149782315001164939')
         const resultLog = await postCreateLog(userWorkspace, bestTask)
+        const editLogResult = await postRenewLog(userWorkspace, resultLog.Story)
+        const resultUrl = `https://www.tapd.cn/tapd_fe/my/work?workitem_type_id=${taskWorkTypeId}&dialog_preview_id=story_${editLogResult.Story.id}`
+        
+        return { resultLog, editLogResult, resultUrl }
+    };
+
+    // 自动创建日志（指定任务）- 用于定时任务执行
+    const autoLogWithTask = async (taskId) => {
+        const userinfoPromise = getUserInfo()
+        const userWorkspacePromise = Promise.resolve(getUserWorkspace())
+        const [userinfo, userWorkspace] = await Promise.all([userinfoPromise, userWorkspacePromise])
+        const workTypeList = await getWorkTypeList(userWorkspace)
+        const taskWorkTypeId = workTypeList.find(item => item.WorkitemType.english_name === EMUN_WORKITEM_ENGLISH_NAME[1]).WorkitemType.id
+
+        const userTaskList = (await getUserStoryList(userWorkspace, taskWorkTypeId))
+        const targetTask = taskId 
+            ? userTaskList.find(item => item.id === taskId)
+            : userTaskList.reduce((prev, curr) => {
+                return prev.average_score > curr.average_score ? prev : curr
+            })
+        
+        if (!targetTask) {
+            throw new Error('未找到指定的任务或用户没有任务');
+        }
+        
+        const resultLog = await postCreateLog(userWorkspace, targetTask)
         const editLogResult = await postRenewLog(userWorkspace, resultLog.Story)
         const resultUrl = `https://www.tapd.cn/tapd_fe/my/work?workitem_type_id=${taskWorkTypeId}&dialog_preview_id=story_${editLogResult.Story.id}`
         
@@ -179,6 +208,7 @@ export const createTapdApi = (USER_TOKEN) => {
         postCreateLog,
         postRenewLog,
         autoLog,
+        autoLogWithTask,
     };
 };
 
@@ -191,7 +221,7 @@ export const SKILL_CONFIG = {
             name: 'USER_TOKEN',
             type: 'string',
             required: true,
-            description: '你的 Tapd OAuth Access Token，从 Tapd 开放平台获取'
+            description: '你的 Tapd OAuth Access Token，从 Tapd 开放平台获取（必填）'
         }
     ],
     methods: [
@@ -200,7 +230,43 @@ export const SKILL_CONFIG = {
         { name: 'getWorkTypeList', description: '获取工单类型列表', params: ['workspace_id'] },
         { name: 'getUserStoryList', description: '获取用户的 Story 列表', params: ['workspace_id', 'workTypeId'] },
         { name: 'autoLog', description: '自动创建日志（核心业务逻辑）' },
+        { name: 'autoLogWithTask', description: '自动创建日志（指定任务ID）', params: ['taskId（可选）'] },
     ]
 };
+
+// ========== 定时任务入口 ==========
+// 直接运行脚本时自动执行 autoLog
+const runAsCLI = async () => {
+    const isCLI = require.main === module;
+    
+    if (isCLI) {
+        console.log('========================================');
+        console.log('TAPD 自动创建日志技能');
+        console.log('========================================\n');
+        
+        // 从环境变量获取 USER_TOKEN
+        const userToken = process.env.TAPD_USER_TOKEN;
+        if (!userToken) {
+            console.error('❌ 错误：请设置 TAPD_USER_TOKEN 环境变量');
+            console.error('   示例：TAPD_USER_TOKEN=xxx node tapd-skill/index.js');
+            process.exit(1);
+        }
+        
+        try {
+            const tapd = createTapdApi(userToken);
+            const result = await tapd.autoLog();
+            console.log('\n========================================');
+            console.log('✅ 执行成功');
+            console.log('🔗 链接:', result.resultUrl);
+            console.log('========================================');
+        } catch (error) {
+            console.error('❌ 执行失败:', error.message);
+            process.exit(1);
+        }
+    }
+};
+
+// 执行 CLI 入口
+runAsCLI();
 
 export default createTapdApi;
