@@ -30,3 +30,6 @@ yarn-error.log*
 
 # OS
 Thumbs.db
+
+# TAPD Config (包含USER_TOKEN敏感信息)
+tapd-config.json
